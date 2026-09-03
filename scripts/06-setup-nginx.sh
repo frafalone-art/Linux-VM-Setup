@@ -6,55 +6,57 @@
 # No domain or SSL required — this serves plain HTTP on port 80.
 # Run 07-setup-ssl.sh separately once you have a domain pointed at the VM.
 #
-# Usage: ./06-setup-nginx.sh <app_name> <upstream_port> [server_name]
+# Usage: ./06-setup-nginx.sh [app_name] [upstream_port] [server_name]
+# If arguments are omitted, you'll be prompted for them.
 # Example: ./06-setup-nginx.sh myapp 8000 myapp.example.com
 # Example (no domain yet): ./06-setup-nginx.sh myapp 8000
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TEMPLATE_FILE="$SCRIPT_DIR/../templates/nginx.conf.template"
+
 echo "=== [1/1] Setup Nginx Reverse Proxy ==="
 echo "This script will:"
 echo "  1. Install nginx (if not already installed)"
-echo "  2. Create a reverse-proxy config pointing to the local uvicorn port"
+echo "  2. Render the nginx config from templates/nginx.conf.template"
 echo "  3. Enable the site and reload nginx"
 echo ""
 
-if [ $# -lt 2 ]; then
-    echo "Usage: $0 <app_name> <upstream_port> [server_name]" >&2
-    echo "Example: $0 myapp 8000 myapp.example.com" >&2
+if [ ! -f "$TEMPLATE_FILE" ]; then
+    echo "ERROR: template not found at $TEMPLATE_FILE" >&2
     exit 1
 fi
 
-APP_NAME="$1"
-UPSTREAM_PORT="$2"
-SERVER_NAME="${3:-_}"   # "_" = catch-all, use when there's no domain yet
+if [ $# -ge 1 ]; then APP_NAME="$1"; else read -rp "Service/app name (e.g. myapp): " APP_NAME; fi
+if [ $# -ge 2 ]; then UPSTREAM_PORT="$2"; else read -rp "Internal uvicorn port [8000]: " UPSTREAM_PORT; UPSTREAM_PORT="${UPSTREAM_PORT:-8000}"; fi
+if [ $# -ge 3 ]; then
+    SERVER_NAME="$3"
+else
+    read -rp "Domain name (leave empty if you don't have one yet): " SERVER_NAME
+    SERVER_NAME="${SERVER_NAME:-_}"   # "_" = catch-all, use when there's no domain yet
+fi
+
+if [ -z "$APP_NAME" ]; then
+    echo "ERROR: app name is required." >&2
+    exit 1
+fi
 
 if [ "$(id -u)" -ne 0 ]; then
     echo "ERROR: This script must be run as root (use sudo)." >&2
     exit 1
 fi
 
-echo "--> Installing nginx..."
+echo "--> Installing nginx and gettext-base (for envsubst)..."
 apt-get update -y
-apt-get install -y nginx
+apt-get install -y nginx gettext-base
 
 CONFIG_PATH="/etc/nginx/sites-available/${APP_NAME}"
 
-echo "--> Writing nginx config to $CONFIG_PATH..."
-cat > "$CONFIG_PATH" <<EOF
-server {
-    listen 80;
-    server_name ${SERVER_NAME};
-
-    location / {
-        proxy_pass http://127.0.0.1:${UPSTREAM_PORT};
-        proxy_set_header Host \$host;
-        proxy_set_header X-Real-IP \$remote_addr;
-        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-        proxy_set_header X-Forwarded-Proto \$scheme;
-    }
-}
-EOF
+echo "--> Rendering nginx config to $CONFIG_PATH..."
+export SERVER_NAME UPSTREAM_PORT
+# shellcheck disable=SC2016  # single quotes are intentional: envsubst needs the literal var list
+envsubst '${SERVER_NAME} ${UPSTREAM_PORT}' < "$TEMPLATE_FILE" > "$CONFIG_PATH"
 
 echo "--> Enabling site..."
 ln -sf "$CONFIG_PATH" "/etc/nginx/sites-enabled/${APP_NAME}"
