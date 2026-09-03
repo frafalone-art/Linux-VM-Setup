@@ -1,0 +1,12 @@
+[program:${APP_NAME}]
+directory=${APP_DIR}
+command=${APP_DIR}/venv/bin/uvicorn ${APP_MODULE} --host 0.0.0.0 --port ${PORT}
+autostart=true
+autorestart=true
+startretries=3
+user=${RUN_USER}
+redirect_stderr=true
+stdout_logfile=${LOG_DIR}/${APP_NAME}.log
+stdout_logfile_maxbytes=10MB
+stdout_logfile_backups=5
+environment=PATH="${APP_DIR}/venv/bin"
