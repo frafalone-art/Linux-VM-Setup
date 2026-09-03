@@ -6,7 +6,7 @@ Shell scripts I use to provision my own **Ubuntu VMs** for hosting **FastAPI** s
 [![Ubuntu](https://img.shields.io/badge/Ubuntu-24.04-E95420?logo=ubuntu&logoColor=white)](https://ubuntu.com/)
 [![Nginx](https://img.shields.io/badge/Nginx-ReverseProxy-009639?logo=nginx&logoColor=white)](https://nginx.org/)
 [![Supervisor](https://img.shields.io/badge/Supervisor-ProcessManager-4B8BBE)](http://supervisord.org/)
-[![UFW](https://img.shields.io/badge/UFW-Firewall-2C3E50)](https://help.ubuntu.com/community/UFW)
+[![UFW](https://img.shields.io/badge/UFW-Firewall-2C3E50?logo=debian)](https://help.ubuntu.com/community/UFW)
 [![Fail2ban](https://img.shields.io/badge/Fail2ban-SSH%20Protection-0A0A0A)](https://www.fail2ban.org/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue)](LICENSE)
 
