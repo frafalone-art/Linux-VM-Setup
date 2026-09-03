@@ -4,29 +4,37 @@
 # Installs Supervisor and configures it to run a FastAPI app (via uvicorn)
 # as a background service that restarts automatically on crash or reboot.
 #
-# Usage: ./05-setup-supervisor.sh <app_name> <app_dir> <module:app> [port] [run_user]
+# Usage: ./05-setup-supervisor.sh [app_name] [app_dir] [module:app] [port] [run_user]
+# If arguments are omitted, you'll be prompted for them.
 # Example: ./05-setup-supervisor.sh myapp /opt/myapp main:app 8000 deploy
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+TEMPLATE_FILE="$SCRIPT_DIR/../templates/supervisor.conf.template"
+
 echo "=== [1/1] Setup Supervisor ==="
 echo "This script will:"
 echo "  1. Install Supervisor (if not already installed)"
-echo "  2. Create a program config to run uvicorn under Supervisor"
+echo "  2. Render the program config from templates/supervisor.conf.template"
 echo "  3. Reload Supervisor and start the service"
 echo ""
 
-if [ $# -lt 3 ]; then
-    echo "Usage: $0 <app_name> <app_dir> <module:app> [port] [run_user]" >&2
-    echo "Example: $0 myapp /opt/myapp main:app 8000 deploy" >&2
+if [ ! -f "$TEMPLATE_FILE" ]; then
+    echo "ERROR: template not found at $TEMPLATE_FILE" >&2
     exit 1
 fi
 
-APP_NAME="$1"
-APP_DIR="$2"
-APP_MODULE="$3"
-PORT="${4:-8000}"
-RUN_USER="${5:-root}"
+if [ $# -ge 1 ]; then APP_NAME="$1"; else read -rp "Service/app name (e.g. myapp): " APP_NAME; fi
+if [ $# -ge 2 ]; then APP_DIR="$2"; else read -rp "Application directory (e.g. /opt/myapp): " APP_DIR; fi
+if [ $# -ge 3 ]; then APP_MODULE="$3"; else read -rp "Uvicorn module:app (e.g. main:app): " APP_MODULE; fi
+if [ $# -ge 4 ]; then PORT="$4"; else read -rp "Internal port [8000]: " PORT; PORT="${PORT:-8000}"; fi
+if [ $# -ge 5 ]; then RUN_USER="$5"; else read -rp "User to run the service as [root]: " RUN_USER; RUN_USER="${RUN_USER:-root}"; fi
+
+if [ -z "$APP_NAME" ] || [ -z "$APP_DIR" ] || [ -z "$APP_MODULE" ]; then
+    echo "ERROR: app name, app directory and module:app are required." >&2
+    exit 1
+fi
 
 if [ "$RUN_USER" = "root" ]; then
     echo "NOTE: no run_user given — the service will run as root."
@@ -44,9 +52,9 @@ if [ ! -x "$APP_DIR/venv/bin/uvicorn" ]; then
     exit 1
 fi
 
-echo "--> Installing Supervisor..."
+echo "--> Installing Supervisor and gettext-base (for envsubst)..."
 apt-get update -y
-apt-get install -y supervisor
+apt-get install -y supervisor gettext-base
 
 CONFIG_PATH="/etc/supervisor/conf.d/${APP_NAME}.conf"
 LOG_DIR="/var/log/${APP_NAME}"
@@ -55,21 +63,10 @@ echo "--> Creating log directory at $LOG_DIR..."
 mkdir -p "$LOG_DIR"
 chown "$RUN_USER" "$LOG_DIR" 2>/dev/null || true
 
-echo "--> Writing Supervisor config to $CONFIG_PATH..."
-cat > "$CONFIG_PATH" <<EOF
-[program:${APP_NAME}]
-directory=${APP_DIR}
-command=${APP_DIR}/venv/bin/uvicorn ${APP_MODULE} --host 0.0.0.0 --port ${PORT}
-autostart=true
-autorestart=true
-startretries=3
-user=${RUN_USER}
-redirect_stderr=true
-stdout_logfile=${LOG_DIR}/${APP_NAME}.log
-stdout_logfile_maxbytes=10MB
-stdout_logfile_backups=5
-environment=PATH="${APP_DIR}/venv/bin"
-EOF
+echo "--> Rendering Supervisor config to $CONFIG_PATH..."
+export APP_NAME APP_DIR APP_MODULE PORT RUN_USER LOG_DIR
+# shellcheck disable=SC2016  # single quotes are intentional: envsubst needs the literal var list
+envsubst '${APP_NAME} ${APP_DIR} ${APP_MODULE} ${PORT} ${RUN_USER} ${LOG_DIR}' < "$TEMPLATE_FILE" > "$CONFIG_PATH"
 
 echo "--> Reloading Supervisor configuration..."
 supervisorctl reread
