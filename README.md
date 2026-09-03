@@ -29,9 +29,35 @@ Each script does **one job** and can be run on its own, or all together via `set
 | 7️⃣ | `07-setup-firewall.sh` | Installs UFW and opens only ports **22** (SSH), **80** (HTTP), **443** (HTTPS) |
 | 8️⃣ | `08-setup-fail2ban.sh` | Installs fail2ban to block brute-force SSH login attempts |
 
-Nginx and Supervisor configs are generated from editable templates in [`templates/`](templates), so you can tweak the config shape once without touching the scripts.
-
 🔒 **Note on SSL/HTTPS:** not included here, since a trusted certificate (Let's Encrypt) requires an actual domain pointed at your VM — it can't be issued for a bare IP. If you have a domain, point it at your server and add certbot manually after running `06-setup-nginx.sh` with your domain name.
+
+---
+
+## 🧩 Config templates
+
+The `templates/` folder shows the **exact shape** of the nginx and Supervisor config files that get generated:
+
+```
+templates/
+├── nginx.conf.template        # what /etc/nginx/sites-available/<app_name> ends up looking like
+└── supervisor.conf.template   # what /etc/supervisor/conf.d/<app_name>.conf ends up looking like
+```
+
+Each one uses placeholders that map directly to the arguments you pass to the corresponding script:
+
+| Placeholder | Comes from | Example |
+|---|---|---|
+| `${APP_NAME}` | 1st arg to `05-setup-supervisor.sh` / `06-setup-nginx.sh` | `myapp` |
+| `${APP_DIR}` | app folder created by `04-setup-venv.sh` | `/opt/myapp` |
+| `${APP_MODULE}` | your uvicorn entrypoint | `main:app` |
+| `${PORT}` / `${UPSTREAM_PORT}` | port your app listens on | `8000` |
+| `${RUN_USER}` | user created by `02-create-user.sh` | `deploy` |
+| `${LOG_DIR}` | log folder used by Supervisor | `/var/log/myapp` |
+| `${SERVER_NAME}` | domain, or `_` for catch-all if you don't have one yet | `myapp.example.com` |
+
+**Current behavior:** `05-setup-supervisor.sh` and `06-setup-nginx.sh` currently write the config directly (inline heredoc), they don't read from `templates/*.template`. The template files are there as **reference/documentation** — read them to see what the final config looks like, or copy one to `/etc/...` manually and fill it in by hand if you want to tweak something the scripts don't expose as an argument.
+
+> If you want the scripts to actually generate the file *from* `templates/`, swap the heredoc for `envsubst < templates/nginx.conf.template > "$CONFIG_PATH"` (requires `gettext-base`) — that's the natural next step for this repo.
 
 ---
 
